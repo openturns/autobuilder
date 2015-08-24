@@ -1,0 +1,390 @@
+#!/bin/bash 
+# launch a distcheck on a revision of openturns (trunk, tag or branches) or openturns-doc or a module
+# cannot be launch twice at the same time
+# logfile should not set inside workdir
+
+# stop on any error
+set -e
+
+
+# print error message before exiting
+trap trap_error ERR
+for ac_signal in 1 2 13 15; do
+  trap "echo ERROR: stopped by signal $ac_signal; trap_error $ac_signal" $ac_signal
+done
+ac_signal=0
+
+function trap_error {
+  set +x
+  if [ "$1" != "" ]; then
+    echo "ERROR: last command execution failed (errnum $1)!"
+  else
+    echo "ERROR: last command execution failed!"
+  fi
+  
+  exit 1
+}
+
+
+function usage {
+  echo "usage: $0 OWNER REPO REV OUT_DIR [-ot-linux|-ot-mingw|-ot-vc|-doxygen|-doc|-module-linux OT_PREFIX|-module-mingw OT_PREFIX] [-log logfile] [-keep INSTALL_DIR]"
+  echo "usage: e.g.: $0 openturns/trunk 1538 out_dir -ot-linux"
+  echo "usage: $0 -h"
+  exit 1
+}
+
+if [ $# -lt 3 ]; then
+  usage
+fi
+
+OWNER="$1"
+REPO="$2"
+TYPE="$3"
+REV="$4"
+OUT_DIR="$5" # outdir must be != workdir
+rm -rf $OUT_DIR
+mkdir -p $OUT_DIR
+shift 5
+
+CHECK=
+LOG_TO_FILE=0
+# where distcheck-launcher log will be put
+LOG_FILE=distcheck-launcher.log
+
+# git server base URL
+GIT_REPO="https://github.com/${OWNER}/${REPO}.git"
+
+GIT_OPTIONS="--depth=50"
+
+# distcheck related files (must correspond to autobuilder's CHROOT_DISTCHECK_DIR var)
+DISTCHECK_DIR=$HOME/distcheck
+
+# current src and compiled files
+WORKDIR=$DISTCHECK_DIR/workdir/
+
+# specify where installation files will be put
+INSTALL_DIR="${WORKDIR}/build/install"
+
+# ot installed files (useful for module compilation)
+OT_PREFIX=
+
+
+WINDEPS=$HOME/opt/openturns-developers-windeps-1.4
+VCBOTTLE=$HOME/opt/bottle-vc10
+
+# choose check
+while [ $# -gt 0 ]; do
+  case $1 in
+    -ot-linux|-ot-mingw|-ot-vc|-doxygen|-doc)
+      CHECK=$1
+      shift
+      ;;
+    -module-linux|-module-mingw)
+      CHECK=$1
+      if [ $# -gt 1 ]; then
+	OT_PREFIX=$2
+	shift
+      else
+        usage
+        exit 1
+      fi
+      shift
+      ;;
+    -log)
+      LOG_TO_FILE=1
+      if [ $# -gt 1 ]; then
+	LOG_FILE=$2
+	shift
+      fi
+      shift
+      # potential bug if wrong arguments, nobody cares
+      ;;
+    -keep)
+      # copy installation files to a specific destdir (should be an absolute path)
+      if [ $# -gt 1 ]; then
+	INSTALL_DIR=$2
+	shift
+      fi
+      shift
+      ;;
+    -h|-help|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$CHECK" == "" ]; then
+  echo "! error no correct check specified !"
+  usage
+  exit 1
+fi
+
+if [ $LOG_TO_FILE -eq 1 ]; then
+  # log to file
+  exec 1>$OUT_DIR/$LOG_FILE 2>&1
+fi
+
+function cleanup {
+  if [ -d $WORKDIR ]; then
+    chmod -R u+rwx $WORKDIR
+    rm -rf $WORKDIR
+  fi
+}
+
+
+# turns on debug output
+set -x
+
+# print check summary
+beg="$0 begin : $(date)"
+echo $beg
+echo GIT_REPO=$GIT_REPO
+echo REV=$REV
+echo WORKDIR=$WORKDIR
+
+if [ "$OT_PREFIX" != "" ]; then
+  if [ ! -d ${OT_PREFIX}/lib -a ! -d ${OT_PREFIX}-i686/lib ]; then
+    echo "$OT_PREFIX/lib directory does not exists. Abort."
+    exit 1
+  fi
+fi
+
+# remove last workdir
+cleanup
+
+# compile flags
+NB_JOBS=4
+JOBSFLAGS=-j$NB_JOBS
+LINUX_BIT=`getconf LONG_BIT`
+
+# not useful since server has quite huge memory capacity
+function update_nb_jobs {
+  HOUR=`date +%H`
+  if [ $HOUR -gt 6 -a $HOUR -lt 19 ]; then
+    # work hours
+    NB_JOBS=4
+  else
+    NB_JOBS=4
+  fi
+  # debug
+  #NB_JOBS=4
+
+  JOBSFLAGS=-j$NB_JOBS
+}
+
+function git_checkout {
+  git clone ${GIT_OPTIONS} ${GIT_REPO} ${WORKDIR}
+  cd ${WORKDIR}
+  if test "${TYPE}" = "commit"
+  then
+    git checkout -qf ${REV}
+  elif test "${TYPE}" = "pull"
+  then
+    git fetch origin +refs/pull/${REV}/merge:
+    git checkout -qf FETCH_HEAD
+  elif test "${TYPE}" = "tag"
+  then
+    git checkout tag/${REV}
+  else
+    echo "invalid TYPE: ${TYPE}"
+  fi
+
+  if test "${REPO}" = "ottemplate" -a -x customize.sh
+  then
+    ./customize.sh OTFoo Bar
+  fi
+}
+
+function check_module_linux {
+  git_checkout
+
+  if test -f CMakeLists.txt
+  then
+    mkdir build && cd build
+    cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DOpenTURNS_DIR=$OT_PREFIX/lib/cmake/openturns ..
+
+    update_nb_jobs
+    make install $JOBSFLAGS
+    update_nb_jobs
+    make tests $JOBSFLAGS
+    update_nb_jobs
+    ctest $JOBSFLAGS || { cp ./Testing/Temporary/LastTest.log $OUT_DIR/module_check.log; false; }
+
+    # python3, (requires swig >= 2.0.9)
+    cmake -DSWIG_EXECUTABLE=/opt/swig-3.0.6/bin/swig -DPYTHON_EXECUTABLE=/usr/bin/python3 -DPYTHON_INCLUDE_DIR=/usr/include/python3.1 -DPYTHON_LIBRARY=/usr/lib/libpython3.1.so -DOPENTURNS_PYTHON3_MODULE_PATH=$OT_PREFIX/lib/python3.1/site-packages ..
+    update_nb_jobs
+    make install $JOBSFLAGS -C python/src
+    update_nb_jobs
+    ctest $JOBSFLAGS -R ^pyinstallcheck || { cp ./Testing/Temporary/LastTest.log $OUT_DIR; false; }
+
+    # copy doc
+    cp $INSTALL_DIR/share/doc/*/pdf/*.pdf $OUT_DIR/ || cp -r $INSTALL_DIR/share/*/doc/html $OUT_DIR/
+
+  else
+
+    echo "No installer script found (CMakeLists.txt)! Exiting."
+    false
+
+  fi
+}
+
+
+
+function check_module_mingw {
+
+  git_checkout
+
+  if test -f CMakeLists.txt
+  then
+
+    cd $WORKDIR/distro/windows
+    # todo: INSTALL_PREFIX
+    make mod-test OT_PREFIX=${OT_PREFIX}-i686 WINDEPS=$WINDEPS CHECK_OT=y || { cp $WORKDIR/build-i686-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; } 
+    make mod-installer OT_PREFIX=${OT_PREFIX}-i686 WINDEPS=$WINDEPS CHECK_OT=y && cp *.exe $OUT_DIR
+    #rm mod-*
+    #make mod-test OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 || { cp $WORKDIR/build-x86_64-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+    #make mod-installer OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 && cp *.exe $OUT_DIR
+  else
+
+    echo "No installer script found (CMakeLists.txt)! Exiting."
+    false
+
+  fi
+
+}
+
+
+
+function check_wrapper_template {
+  # check wrapper template calling shell command
+  # must be launched at the end of check_ot_linux
+  TEMPLATE_WORKDIR=$WORKDIR/wrappers/WrapperTemplates/wrapper_calling_shell_command
+  cd $TEMPLATE_WORKDIR
+  ./customize Pouet
+  mkdir -p build && cd build
+  cmake .. -DCMAKE_INSTALL_PREFIX=$PWD/install -DCMAKE_MODULE_PATH=$WORKDIR/build/install/lib/openturns -DOpenTURNS_DIR=$INSTALL_DIR/lib/openturns
+  make install $JOBSFLAGS
+  cd $TEMPLATE_WORKDIR
+  LD_LIBRARY_PATH=$WORKDIR/build/install/lib/openturns PATH=$TEMPLATE_WORKDIR/build/install/bin:$PATH OPENTURNS_WRAPPER_PATH=$TEMPLATE_WORKDIR/build/install/wrappers PYTHONPATH=$WORKDIR/build/install/lib/python2.6/site-packages python test.py
+}
+
+
+
+function check_ot_linux {
+  git_checkout
+
+  if [ ! -f CMakeLists.txt ]; then
+    echo "No CMakeLists.txt found. Abort cmake compilation"
+    false
+  fi
+
+  mkdir -p build && cd build
+  cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR ..
+
+  update_nb_jobs
+  make install $JOBSFLAGS
+  PYTHONPATH=$INSTALL_DIR/lib/python2.6/site-packages python -c "from openturns import *; u=Normal(); print (u)"
+  update_nb_jobs
+  make tests $JOBSFLAGS
+  update_nb_jobs
+  ctest $JOBSFLAGS --timeout 100 || { cp ./Testing/Temporary/LastTest.log $OUT_DIR; false; }
+
+  # python3, (requires swig >= 2.0.9)
+  cmake -DSWIG_EXECUTABLE=/opt/swig-3.0.6/bin/swig -DPYTHON_EXECUTABLE=/usr/bin/python3 -DPYTHON_INCLUDE_DIR=/usr/include/python3.1 -DPYTHON_LIBRARY=/usr/lib/libpython3.1.so -DOPENTURNS_PYTHON_MODULE_PATH=$INSTALL_DIR/lib/python3.1/site-packages -DUSE_SPHINX=OFF ..
+  update_nb_jobs
+  make install $JOBSFLAGS -C python/src
+  PYTHONPATH=$INSTALL_DIR/lib/python3.1/site-packages python3 -c "import openturns as ot; u = ot.Normal(); print(u)"
+  update_nb_jobs
+  ctest $JOBSFLAGS -R ^pyinstallcheck --timeout 100 || { cp ./Testing/Temporary/LastTest.log $OUT_DIR; false; }
+
+
+  if test -x ~/.local/bin/pep257
+  then
+   ~/.local/bin/pep257 -s --ignore=D100,D101,D102,D103,D203,D204,D301 $INSTALL_DIR/lib/python3.1/site-packages/openturns/ || echo "-- pep257 found some warnings"
+  fi
+
+  #check_module_linux
+  # debug
+  #check_wrapper_template
+}
+
+
+
+function check_ot_mingw {
+  git_checkout
+  cd distro/windows
+
+  update_nb_jobs
+
+  make ot-test OT_PREFIX=${INSTALL_DIR}-i686 WINDEPS=$WINDEPS JOBS=$NB_JOBS || \
+    { cp ${WORKDIR}/build-i686-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+
+  #rm ot-*
+  #make ot-test OT_PREFIX=${INSTALL_DIR}-x86_64 WINDEPS=$WINDEPS JOBS=$NB_JOBS ARCH=x86_64 || \
+  #  { cp $WORKDIR//build-x86_64-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+}
+
+
+
+function check_ot_vc {
+  git_checkout
+  update_nb_jobs
+  cd distro/windows
+  make ot-vc VCBOTTLE=$VCBOTTLE JOBS=2 WINDEPS=$WINDEPS
+}
+
+
+
+function check_doxygen {
+  git_checkout
+  update_nb_jobs
+  mkdir build && cd build
+  cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR ..
+  make $JOBSFLAGS html && mv ./lib/doc/api $OUT_DIR
+  make install $JOBSFLAGS && mv $INSTALL_DIR/share/openturns/doc/html $OUT_DIR/sphinx
+}
+
+
+
+function check_doc {
+  git_checkout
+  update_nb_jobs
+  mkdir build && cd build
+  cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DOpenTURNS_DIR=/home/openturns/distcheck/tag/squeeze-x86_64-ot-linux/lib/cmake/openturns ..
+  make install $JOBSFLAGS && { mv install/share/doc/openturns-doc/* $OUT_DIR; }
+  ctest $JOBSFLAGS || { cp ${WORKDIR}/build/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+}
+
+
+
+if [ "$CHECK" == "-ot-linux" ]; then
+  check_ot_linux
+elif [ "$CHECK" == "-ot-mingw" ]; then
+  check_ot_mingw
+elif [ "$CHECK" == "-ot-vc" ]; then
+  check_ot_vc
+elif [ "$CHECK" == "-module-linux" ]; then
+  check_module_linux
+elif [ "$CHECK" == "-module-mingw" ]; then
+  check_module_mingw
+elif [ "$CHECK" == "-doxygen" ]; then
+  check_doxygen
+elif [ "$CHECK" == "-doc" ]; then
+  check_doc
+else
+  usage
+fi
+
+
+
+set +x
+end="$0 end : $(date)"
+echo $beg
+echo $end
+# used to detect success
+echo "Everything seems to be all right"

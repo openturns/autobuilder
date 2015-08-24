@@ -1,0 +1,482 @@
+#! /usr/bin/env python
+# -*- coding: utf8 -*-
+# create the web pages that show module compile state
+import os
+import string
+import re
+import shutil
+
+
+www_autobuilder =  'autobuilder.openturns.org'
+#www_autobuilder_dir = os.path.join('', www_autobuilder)
+www_autobuilder_dir = os.path.join('/var/www/', www_autobuilder)
+www_autobuilder_url = 'http://' + www_autobuilder
+
+module_pages_dir = os.path.join(www_autobuilder_dir, 'status')
+# web server of the doc
+www_doc = '/var/www/doc.openturns.org'
+
+
+svn_server = 'https://svn.openturns.org'
+svn_options = '--non-interactive --trust-server-cert'
+
+trac_server = 'http://trac.openturns.org'
+
+flavours = ['i386', 'x86_64', 'mingw']
+
+modules = {}
+ot_revs = {}
+
+css_file =  'ot-modules.css'
+html_header = \
+"""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+  <link href="ot-modules.css" media="screen" rel="stylesheet" type="text/css" />
+  <!--
+  <meta name="robots" content="noindex,nofollow"/>
+  <link href="/favicon.ico" rel="shortcut icon" />
+  <title>OT Build Service</title>
+  -->
+</head>
+<body>
+
+"""
+
+html_footer = \
+"""
+
+</body>
+</html>
+"""
+
+ok_class = 'status_succeeded'
+bad_class = 'status_failed'
+
+
+def init_module_dir():
+    try:
+        os.mkdir(module_pages_dir)
+    except OSError:
+        pass
+
+    shutil.copyfile(os.path.dirname(os.path.realpath(__file__)) + os.sep + css_file, os.path.join(module_pages_dir, css_file))
+
+
+
+# debug func
+def print_modules(modules):
+    print
+    print('modules data struct content:')
+    for module in modules:
+        print('  ' + module)
+        for ot_rev in modules[module]:
+            print('    ' + modules[module][ot_rev]['svn_tag_dir'] + 
+                  ' r' + str(ot_rev))
+            for module_rev in modules[module][ot_rev]['modules']:
+                module_rev_dic = modules[module][ot_rev]['modules'][module_rev]
+                print('      ' + module_rev_dic['svn_tag_dir'] + 
+                      ' r' + str(module_rev))
+                for key, data in modules[module][ot_rev]['modules'][module_rev].items():
+                    if key == 'svn_tag_dir':
+                        continue
+                    print('        ' + key + ' : ' + str(data))
+
+
+
+def choose_ot_revs(ot_revs):
+    # return in a list the last 3 revs (includes rc if it is the last one)
+    choosed = []
+
+    if len(ot_revs) == 0: 
+        return choosed
+
+    ot_revs_sorted = reversed(sorted(ot_revs.keys()))
+    is_rc = re.compile('.*rc\d*$')
+    for ot_rev in ot_revs_sorted:
+        if is_rc.match(ot_revs[ot_rev]):
+            if len(choosed) == 0:
+                choosed.append(ot_rev)
+        else:
+            if len(choosed) == 3:
+                break
+            choosed.append(ot_rev)
+    return choosed
+
+
+""" 
+data stucture of modules :
+
+  modules[module_name] (i.e. 'agrum')
+    [ot_rev] (i.e. 2976)
+      ['svn_tag_dir'] = 'openturns-1.1'
+      ['modules']
+        [module_rev] (i.e. 276)
+          ['svn_tag_dir'] = 'otagrum-1.1'
+          ['tgz'] = ''
+          ['out_dir'] = '...'
+          ['ok'] = True/False
+          ['i386']
+            ['ok'] = True/False
+            ['out_dir'] = '...'
+            ['files'] = '.deb'
+          ['x86_64']
+            ['ok'] = True/False
+            ['out_dir'] = '...'
+            ['files'] = '...'
+          ['mingw']
+            ['ok'] = True/False
+            ['out_dir'] = '...'
+            ['files'] = '...'
+
+          ['doc_dir'] = '...'
+
+
+"""
+
+def create_modules_page(modules):
+
+    for module in modules:
+        html = html_header
+        html += '<div id="content" class="container_16 content-wrapper">\n'
+        html += '<div class="grid_16 box box-shadow alpha omega">\n'
+        html += '<div id="monitor-wrapper">\n'
+
+        html += '&nbsp;&nbsp;<a href="index.html">Modules list</a>\n'
+        html += '<br>\n'
+        html += '<h3>' + module + ' module</h3>\n'
+
+        html += '<table class=buildstatus>\n'
+        html += '<thead>\n'
+        html += '<tr class=nowrap>\n'
+        html += '<th></th><th>Version</th>'
+        #html += '<th>Status</th>'
+        for flavour in flavours:
+            html += '<th>' + flavour + '</th>'
+        html += '<th>Sources</th><th>Documentation</th><th>Binaries</th>\n'
+        html += '</tr>\n'
+        html += '</thead>\n'
+
+        html += '<tbody>\n'
+        for ot_rev in reversed(sorted(modules[module])):
+            for module_rev in reversed(sorted(modules[module][ot_rev]['modules'])):
+                module_rev_dic = modules[module][ot_rev]['modules'][module_rev]
+                html += '  <tr><th class="buildstatus nowrap">' + modules[module][ot_rev]['svn_tag_dir'] + '</th>\n'
+
+
+                # trac
+                html += '  <td class="buildstatus nowrap">'
+                # i.e. http://trac.openturns.org/browser/openturns-modules/openturns-agrum/tags/otagrum-0.1.0
+                trac_url = os.path.join(trac_server, 'browser/openturns-modules')
+                trac_url = os.path.join(trac_url, module)
+                trac_url = os.path.join(trac_url, 'tags')
+                trac_url = os.path.join(trac_url, module_rev_dic['svn_tag_dir'])
+                html +=   '<a href="' + trac_url + '">' + module_rev_dic['svn_tag_dir'] +' (r'+str(module_rev)+')'+ '</a>'
+                html += '  </td>\n'
+
+                # global status
+                #log_url = string.replace(module_rev_dic['out_dir'], www_autobuilder_dir, www_autobuilder_url)
+                #if module_rev_dic['ok']:
+                #    html += '  <td class=' + ok_class + '>'
+                #    html +=   '<a href="' + log_url + '">succeeded</a>'
+                #else:
+                #    html += '  <td class=' + bad_class + '>'
+                #    html +=   '<a href="' + log_url + '">failed</a>'
+                #html += '  </td>'
+
+                # flavour status
+                for flavour in flavours:
+
+                    if module_rev_dic[flavour]['out_dir'] is None:
+                        continue 
+
+                    log_url = string.replace(module_rev_dic[flavour]['out_dir'], www_autobuilder_dir, www_autobuilder_url)
+                    if module_rev_dic[flavour]['ok']:
+                        html += '  <td class="buildstatus nowrap ' + ok_class + '">'
+                        html +=   '<a href="' + log_url + '">succeeded</a>'
+                    else:
+                        html += '  <td class="buildstatus nowrap ' + bad_class + '">'
+                        html +=   '<a href="' + log_url + '">failed</a>'
+                    html += '  </td>'
+
+
+                # tgz
+                html += '  <td class="buildstatus nowrap">'
+                if module_rev_dic['tgz']:
+                    tgz_url = string.replace(module_rev_dic['tgz'], www_autobuilder_dir, www_autobuilder_url)
+                    html +=   '<a href="' + tgz_url + '">'
+                    #html +=   os.path.basename(module_rev_dic['tgz']) + '</a>\n'
+                    html +=   'tgz</a>\n'
+                else:
+                    html += '-'
+
+                html += '  </td>\n'
+
+                # pdf 
+                hrefs = ''
+                for pdf in module_rev_dic['x86_64']['pdf']:
+                    pdf_url = string.replace(pdf, www_autobuilder_dir, www_autobuilder_url)
+                    #pdf_name = os.path.basename(pdf)
+                    #hrefs = '<a href="' + pdf_url + '">' + pdf_name + '</a>'
+                    hrefs = '<a href="' + pdf_url + '">pdf</a>'
+                if hrefs == '':
+                    hrefs = '-'
+                html += '  <td class="buildstatus nowrap">' + hrefs + '</td>\n'
+
+                # exe 
+                hrefs = ''
+                for exe in module_rev_dic['mingw']['bin']:
+                    exe_url = string.replace(exe, www_autobuilder_dir, www_autobuilder_url)
+                    hrefs = '<a href="' + exe_url + '">exe</a>'
+                if hrefs == '':
+                    hrefs = '-'
+                else:
+                    module_name = re.sub('-.*', '', module_rev_dic['svn_tag_dir'])
+                    deb_url = 'http://debian.openturns.org/pool/main/'+module_name[0]+'/'+module_name+'/'
+                    hrefs += ' <a href="' + deb_url + '">deb</a>'
+                html += '  <td class="buildstatus nowrap">' + hrefs + '</td>\n'
+
+                html += '  </tr>\n'
+ 
+        html += '</tbody>\n'
+
+        html += '</table>\n'
+
+
+        html += '</div></div></div>\n'
+        html += html_footer
+
+        # write it
+        handle = open(os.path.join(module_pages_dir, 'module_' + module + '.html'), 'w')
+        handle.write(html)
+        handle.close()
+
+        #print html
+
+
+def create_modules_list_page(modules):
+    html = html_header
+    html += '<div id="content" class="container_16 content-wrapper">\n'
+    html += '<div class="grid_16 box box-shadow alpha omega">\n'
+    html += '<div id="monitor-wrapper">\n'
+    html += '\n'
+    html += '<h3>Modules list</h3>\n'
+    html += '\n'
+    html += '<table class=buildstatus>\n'
+
+    choosed_ot = choose_ot_revs(ot_revs)
+
+    # first header line
+    html += '<thead class="header">\n'
+    html += '<tr class=nowrap>'
+    html += '<th></th>'
+    for ot_rev in choosed_ot:
+        html += '<th>' + ot_revs[ot_rev] + '</th>'
+    html += '</tr>\n'
+    html += '</thead>\n'
+
+    html += '<tbody>\n'
+
+    # modules line
+    for module in modules:
+        # True if the module is present in at least one ot_rev
+        show_module = False
+        module_line = '<tr>\n  <th class="buildstatus nowrap" id=list_module_name><a href="module_' + module + '.html">' + module + '</a></th>\n'
+        for ot_rev in choosed_ot:
+            #print(str(ot_rev) + str(modules[module]))
+            if ot_rev in modules[module] and \
+               len(modules[module][ot_rev]['modules']) > 0:
+                choosed_module = {'rev' : -1, 'ok' : False, 'dir' : '-'}
+                # choose the latest module that is ok, otherwise the latest not ok
+                for module_rev in modules[module][ot_rev]['modules']:
+                    module_rev_dic = modules[module][ot_rev]['modules'][module_rev]
+                    show_module = True
+
+                    if module_rev_dic['ok']:
+                        if int(module_rev) > choosed_module['rev'] or not choosed_module['ok']:
+                            choosed_module = {'rev' : int(module_rev),
+                                              'ok' : True,
+                                              'dir' : module_rev_dic['svn_tag_dir']}
+                    else:
+                        if not choosed_module['ok'] and int(module_rev) > choosed_module['rev']:
+                            choosed_module = {'rev' : int(module_rev),
+                                              'ok' : False,
+                                              'dir' : module_rev_dic['svn_tag_dir']}
+
+                if choosed_module['ok']:
+                    cur_class = ok_class
+                else:
+                    cur_class = bad_class
+                module_line += '  <td class="buildstatus nowrap" id=' + cur_class + '>' + choosed_module['dir'] + '</td>\n'
+            else:
+                module_line += '  <td class="buildstatus nowrap">-</td>\n'
+        if show_module:
+            html += '<tr>\n'
+            html += module_line
+            html += '</tr>\n'
+
+    html += '</tbody>\n'
+
+    html += '</table>\n'
+
+    html += '</div></div></div>\n'
+    #html += '</div></div>\n'
+    #html += '</div>\n'
+
+    html += html_footer
+
+    # write it
+    handle = open(os.path.join(module_pages_dir, 'index.html'), 'w')
+    handle.write(html)
+    handle.close()
+    
+
+
+def separate_dir_rev(name):
+    """ return corresponding svn_dir, svn_rev (int) tuple """
+    sep = '_r'
+    pos = string.rfind(name, sep)
+    if pos != -1:
+        try:
+            return name[:pos], int(name[pos+len(sep):])
+        except:
+            return None, None
+    else:
+        return None, None
+
+
+
+def lastline(filename):
+    offset = 0
+    with open(filename) as f:
+        while 1:
+            f.seek(offset, 2)
+            if f.tell() == 0:
+                return f.read().strip()
+            line = f.read()
+            if line.strip() and line[0] == '\n':
+                return line.strip()
+            offset -= 1
+
+
+
+def get_distcheck_flavour(module_tag_dic, flavour, www_module_tag_fulldir, flavour_dir):
+    distcheck_log = 'distcheck-launcher.log'
+    module_tag_dic[flavour] = {'ok' : False, 'out_dir' : None, 'bin' : [], 'pdf' : []}
+    flavour_fulldir = os.path.join(www_module_tag_fulldir, flavour_dir)
+
+    if os.path.isdir(flavour_fulldir):
+        module_tag_dic[flavour]['out_dir'] = flavour_fulldir
+        log = os.path.join(flavour_fulldir, distcheck_log)
+        if os.path.isfile(log):
+            if lastline(log) == 'Everything seems to be all right':
+                module_tag_dic[flavour]['ok'] = True
+
+    if module_tag_dic[flavour]['ok'] == True:
+
+        if flavour == 'x86_64':
+            # search for .pdf file
+            # search pdf file only for x86_64 flavour
+            for filename in os.listdir(module_tag_dic['out_dir']):
+                if os.path.splitext(filename)[1] == '.pdf':
+                    module_tag_dic[flavour]['pdf'].append(os.path.join(module_tag_dic['out_dir'], filename))
+
+        if flavour == 'mingw':
+            # search for .exe file
+            for filename in os.listdir(module_tag_dic[flavour]['out_dir']):
+                suffix = '.exe'
+                if len(filename) >= len(suffix) and filename[-len(suffix):] == suffix:
+                    module_tag_dic[flavour]['bin'].append(os.path.join(module_tag_dic[flavour]['out_dir'], filename))
+
+
+
+def process_module(module_tag_dic, www_module_tag_fulldir):
+    """ """
+    module_tag_dic['out_dir'] = www_module_tag_fulldir
+
+    # if tgz here: at least one compilation of this module revision succeed
+    module_tag_dic['tgz'] = None
+    tgz_file = os.path.join(www_module_tag_fulldir, module_tag_dic['svn_tag_dir'] + '.tgz')
+    if os.path.isfile(tgz_file):
+        module_tag_dic['tgz'] = tgz_file
+
+    get_distcheck_flavour(module_tag_dic, 'i386', www_module_tag_fulldir, 
+                          'squeeze-i386-module-linux')
+
+    get_distcheck_flavour(module_tag_dic, 'x86_64', www_module_tag_fulldir, 
+                          'squeeze-x86_64-module-linux')
+
+    get_distcheck_flavour(module_tag_dic, 'mingw', www_module_tag_fulldir, 
+                          'sid-x86_64-module-mingw')
+
+    nb_ok = 0
+    for flavour in flavours:
+        if module_tag_dic[flavour]['ok']:
+            nb_ok += 1
+    module_tag_dic['ok'] = (nb_ok == len(flavours))
+
+
+
+
+# parse autobuilder dirs and create modules data
+www_ot_maindir = os.path.join(www_autobuilder_dir, 'openturns/tags')
+for www_ot_dir in os.listdir(www_ot_maindir):
+    # i.e. openturns/tags/openturns-1.1
+    www_ot_fulldir = os.path.join(www_ot_maindir, www_ot_dir)
+    if os.path.isdir(www_ot_fulldir):
+        ot_svn_dir, ot_svn_rev = separate_dir_rev(www_ot_dir)
+        if ot_svn_dir is None or ot_svn_rev is None:
+            print("this dir " + str(www_ot_fulldir) + " is not a valid svn dir")
+            continue
+
+        # store the list of ot_revs found
+        ot_revs[ot_svn_rev] = ot_svn_dir
+
+        #print('OT: ' + ot_svn_dir + ' r' + ot_svn_rev)
+
+        # i.e. openturns/tags/openturns-1.1/modules
+        www_module_maindir = os.path.join(www_ot_fulldir, 'modules')
+        for www_module_dir in os.listdir(www_module_maindir):
+            # i.e. openturns/tags/openturns-1.1/modules/template
+            www_module_fulldir = os.path.join(www_module_maindir, www_module_dir)
+            if os.path.isdir(www_module_fulldir):
+                #print '  module: ' + www_module_dir
+
+                # init the data structure
+                if www_module_dir not in modules:
+                    modules[www_module_dir] = {}
+                if ot_svn_rev not in modules[www_module_dir]:
+                    modules[www_module_dir][ot_svn_rev] = {'svn_tag_dir' : ot_svn_dir, 
+                                                           'modules' : {}}
+
+                # i.e. openturns/tags/openturns-1.1/modules/template/tags
+                www_module_tags_maindir = os.path.join(www_module_fulldir, 'tags')
+                if os.path.isdir(www_module_tags_maindir):
+                    for www_module_tag_dir in os.listdir(www_module_tags_maindir):
+                        module_svn_dir, module_svn_rev = separate_dir_rev(www_module_tag_dir)
+                        #print '    tag: ' + module_svn_dir + ' r' + module_svn_rev
+                        if module_svn_dir is None or module_svn_rev is None:
+                            print("this dir " + str(www_module_tag_dir) + " is not a valid svn dir")
+                            continue
+
+                        # init the data structure
+                        if module_svn_rev not in modules[www_module_dir][ot_svn_rev]['modules']:
+                             modules[www_module_dir][ot_svn_rev]['modules'][module_svn_rev] = {'svn_tag_dir' : module_svn_dir}
+
+                        # i.e. openturns/tags/openturns-1.1/modules/template/tags/template-0.1
+                        www_module_tag_fulldir = os.path.join(www_module_tags_maindir, www_module_tag_dir)
+                        if os.path.isdir(www_module_tag_fulldir):
+                            process_module(modules[www_module_dir][ot_svn_rev]['modules'][module_svn_rev],
+                                           www_module_tag_fulldir)
+
+# debug
+print_modules(modules)
+print(ot_revs)
+
+init_module_dir()
+create_modules_list_page(modules)
+create_modules_page(modules)
+
+

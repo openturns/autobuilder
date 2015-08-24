@@ -1,0 +1,556 @@
+#!/bin/bash
+# launch distcheck in chroot environment each time it is asked to
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/X11
+PATH=/opt/subversion-1.6.21/bin:$PATH
+
+# debug
+set -x
+
+function usage {
+  echo "usage: $0 [-debug]"
+}
+
+LOG_TO_FILE=1
+while [ $# -gt 0 ]; do
+  case $1 in
+    -debug)
+      LOG_TO_FILE=0
+      set -x
+      shift
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+AUTOBUILDER_LOG=autobuilder.log
+
+if [ $LOG_TO_FILE -eq 1 ]; then
+  if [ -a /var/log/${AUTOBUILDER_LOG}.1.gz ]; then 
+    cp /var/log/${AUTOBUILDER_LOG}.1.gz /var/log/${AUTOBUILDER_LOG}.2.gz 
+  fi
+  cd /var/log && zip ${AUTOBUILDER_LOG}.1.gz ${AUTOBUILDER_LOG} > /dev/null
+  cd -
+  # log to file
+  exec 1>/var/log/${AUTOBUILDER_LOG} 2>&1
+fi
+
+# each file found in that dir will launch a distcheck
+# the name of the file determine the distcheck to do
+CHECK_LIST_DIR=/var/autobuilder/openturns
+
+# web server dir where to put distcheck logs results
+WWW_AUTOBUILDER=autobuilder.openturns.org
+WWW_AUTOBUILDER_DIR=/var/www/$WWW_AUTOBUILDER
+WWW_AUTOBUILDER_URL="http://$WWW_AUTOBUILDER"
+
+# web server of the doc
+WWW_DOC=/var/www/doc.openturns.org
+
+# script launched inside the chroot that start openturns compilation and distcheck
+DISTCHECK_LAUNCHER=distcheck-launcher
+
+AUTOBUILDER_SCRIPTS_DIR=/root/autobuilder
+
+# script that chroot to a file system
+CHROOT_ENTER=$AUTOBUILDER_SCRIPTS_DIR/chroot-enter
+
+GET_REV=$AUTOBUILDER_SCRIPTS_DIR/get-rev
+
+CREATE_MODULES_PAGES=$AUTOBUILDER_SCRIPTS_DIR/create-module-website
+
+# distcheck's directory inside chroot
+CHROOT_DISTCHECK_DIR=home/openturns/distcheck
+
+# people advertised of the results
+WATCHERS="commits@openturns.org"
+# debug
+#WATCHERS="schueller@phimeca.com"
+
+GIT_OPTIONS="--depth=50"
+
+# set to > 0 if any distcheck fails
+DISTCHECK_FAILED=0
+# cosmetic
+DISTCHECK_DONE=0
+
+# message sent to WATCHERS
+SUMMARY_MSG=
+BODY_MSG=
+
+DISTCHECK_OK=0
+
+# launch one distcheck and get its results
+function distcheck_prepost
+{
+  # ex: "squeeze", ...
+  local DISTRIB=$1
+  # distrib arch, ex: "x86_64", ...
+  local ARCH=$2
+  
+  # :ot-linux", ...
+  local DISTCHECK_TYPE=$3
+  
+  # ex: "openturns"
+  local OWNER=$4
+
+  # ex: "otads"
+  local REPO=$5
+
+  # "commit", "tag" or "pull"
+  local TYPE=$6
+  
+  # sha, tag or pr number 
+  local REV=$7
+
+  # sha. only useful when DISTCHECK_TYPE = -module-...
+  local OT_REV=$8
+  # OT tag path, only useful when DISTCHECK_TYPE = -module-...
+  local OT_TAG=$9
+
+  # will be set to 1 if this distcheck appears to be ok
+  DISTCHECK_OK=0
+
+  ###
+  # init directories
+  local DISTCHECK_ID=${DISTRIB}-${ARCH}${DISTCHECK_TYPE}
+  local CHROOT_DIR=/data/chroot/$DISTRIB/$ARCH
+  local LOG_FILE=distcheck-launcher.log
+
+
+  # init output directory
+  local OUT_DIR=/$CHROOT_DISTCHECK_DIR/out
+  local CHROOT_OUT_DIR=${CHROOT_DIR}${OUT_DIR}
+  rm -rf $CHROOT_OUT_DIR
+
+  # keep distcheck script up to date inside chroot
+  cp $AUTOBUILDER_SCRIPTS_DIR/$DISTCHECK_LAUNCHER $CHROOT_DIR/opt/
+
+  if test "${TYPE}" = "tag"
+  then
+    OT_PREFIX=/$CHROOT_DISTCHECK_DIR/tag/$(echo $DISTCHECK_ID | sed -e 's/-module/-ot/')
+  else
+    OT_PREFIX=/$CHROOT_DISTCHECK_DIR/last/$(echo $DISTCHECK_ID | sed -e 's/-module/-ot/')
+  fi
+
+  if [[ $DISTCHECK_TYPE == -ot-* ]]; then
+    # reset ot install dir
+    rm -rf ${CHROOT_DIR}${OT_PREFIX}
+    # reinstall it
+    PREFIX_STUFF="-keep $OT_PREFIX"
+  elif [[ $DISTCHECK_TYPE == -module-* ]]; then
+    PREFIX_STUFF="$OT_PREFIX"
+  else
+    PREFIX_STUFF=
+  fi
+
+
+  ###
+  # launch script in chroot
+  $CHROOT_ENTER -c $CHROOT_DIR /opt/$DISTCHECK_LAUNCHER $OWNER $REPO $TYPE $REV $OUT_DIR $DISTCHECK_TYPE $PREFIX_STUFF -log $LOG_FILE
+
+
+  # get results
+  LAST_LINE=`tail -n 1 $CHROOT_OUT_DIR/$LOG_FILE`
+  DISTCHECK_OK=0
+  if [[ "$LAST_LINE" == "Everything seems to be all right" ]]; then
+    DISTCHECK_OK=1
+  fi
+
+
+  ###
+  # make log available on web server
+  # copy everything available in log/ dir.
+  #rename 's/.log$/-distcheck-r$REV-$ARCH$DISTCHECK_TYPE.log/' $CHROOT_DIR/$CHROOT_DISTCHECK_DIR/log/*
+  #if [[ $SVN_DIR == openturns/tags/* ]]; then
+  #  TAG_NAME=$(basename $SVN_DIR)
+  #  LOG_DIR=openturns/tags/${TAG_NAME}_r$REV/$DISTCHECK_ID
+  #if test "$REPO" = openturns
+  #then
+  #  LOG_DIR=openturns/$REV/$DISTCHECK_ID
+  #elif [[ $SVN_DIR == openturns-modules/* ]]; then
+  #  # SVN_DIR = openturns-modules/template/branches/toto -> MODULE_DIR = template
+  #  MODULE_NAME=$(echo $SVN_DIR | sed -e 's/openturns-modules\/\([^/]*\)\/.*/\1/')
+  #  if [[ "$OT_TAG_DIR" != "" ]]; then
+  #    TAG_NAME=$(basename $OT_TAG_DIR)
+  #    if [[ $SVN_DIR == openturns-modules/*/tags/* ]]; then
+  #      MODULE_TAG_NAME=$(basename $SVN_DIR)
+  #      LOG_DIR=openturns/tags/${TAG_NAME}_r$OT_REV/modules/$MODULE_NAME/tags/${MODULE_TAG_NAME}_r$REV/$DISTCHECK_ID
+  #    else
+  #      LOG_DIR=openturns/tags/${TAG_NAME}_r$OT_REV/modules/$MODULE_NAME/r$REV/$DISTCHECK_ID
+  #    fi
+  #  else
+  #    LOG_DIR=openturns/r$OT_REV/modules/$MODULE_NAME/r$REV/$DISTCHECK_ID
+  #  fi
+  #elif test "$REPO" = "doc"
+  #then
+  #  LOG_DIR=openturns-doc/$REV
+  #else
+  #  LOG_DIR=openturns/$REV/modules/$DISTCHECK_ID
+  #  #LOG_DIR=openturns/should_not_exists
+  #fi
+  LOG_DIR=${REPO}/${TYPE}/${REV}
+  mkdir -p $WWW_AUTOBUILDER_DIR/$LOG_DIR
+  mv $CHROOT_OUT_DIR/*.log $WWW_AUTOBUILDER_DIR/$LOG_DIR/
+
+
+  ###
+  # put files on web server
+  COPY_MSG=
+  if [[ $DISTCHECK_OK -eq 1 ]]; then
+
+    # make doxygen available on web server
+    if test "$DISTCHECK_TYPE" == "-doxygen" -a "${TYPER}" = "tag"
+    then
+      VERSION=`echo ${REV}|sed "s|v||g"`
+      WWW_DOC_DOX=$WWW_DOC/$VERSION
+
+      # copy in new directory
+      mkdir -p $WWW_DOC_DOX
+      mv $CHROOT_OUT_DIR/api $WWW_DOC_DOX
+      mv $CHROOT_OUT_DIR/sphinx $WWW_DOC_DOX
+
+      # update latests links
+      mkdir -p $WWW_DOC/openturns-latest
+      rm $WWW_DOC/openturns-latest/api
+      rm $WWW_DOC/openturns-latest/sphinx
+      ln -s $WWW_DOC_DOX/api $WWW_DOC/openturns-latest/api
+      ln -s $WWW_DOC_DOX/sphinx $WWW_DOC/openturns-latest/sphinx
+
+      # create hidden link useful for -doc
+      rm $WWW_DOC/.openturns-latest
+      ln -s $WWW_DOC_DOX $WWW_DOC/.openturns-latest
+
+      COPY_MSG="Doxygen files moved to http://doc.openturns.org/$VERSION.\n\n"
+    fi # doxygen
+
+
+    # make doc available on web server
+    if [[ "$DISTCHECK_TYPE" == "-doc" ]]; then
+      if test "${TYPE}" = "tag"
+      then
+	VERSION=`echo ${REV} | sed "s|v||g"`
+	# e.g. LATEST_OT=/var/www/doc.openturns.org/openturns-1.1rc1
+	LATEST_OT=$(ls -al $WWW_DOC/.openturns-latest | sed -e 's/^.* -> //')
+	if [[ ! -h $WWW_DOC/.openturns-latest || ! -d $LATEST_OT ]]; then
+	  echo "$WWW_DOC/.openturns-latest must be a link. $LATEST_OT must be an existing directory. Abort -doc!"
+	else
+	  WWW_DOC_DOC=$LATEST_OT/$VERSION
+	  # copy in new directory
+	  mkdir -p $WWW_DOC_DOC
+	  if [ $? -eq 0 ]; then
+	    mv $CHROOT_OUT_DIR/* $WWW_DOC_DOC
+
+	    # update latest links
+	    mkdir -p $WWW_DOC/openturns-latest
+	    rm $WWW_DOC/openturns-latest/pdf
+	    rm $WWW_DOC/openturns-latest/html
+	    ln -s $WWW_DOC_DOC/pdf $WWW_DOC/openturns-latest/pdf
+	    ln -s $WWW_DOC_DOC/html $WWW_DOC/openturns-latest/html
+	    COPY_MSG="Doc files moved to http://doc.openturns.org/$(basename $LATEST_OT)/$VERSION.\n\n"
+	  fi
+	fi # link ok
+      else # tag
+	WWW_DOC_DOC=$WWW_AUTOBUILDER_DIR/$LOG_DIR
+	mkdir -p $WWW_DOC_DOC
+	mv $CHROOT_OUT_DIR/* $WWW_DOC_DOC
+
+	COPY_MSG="Doc files moved to $WWW_AUTOBUILDER_URL/$LOG_DIR.\n\n"
+      fi # tag
+    fi # doc
+
+    ## make OT available on web server
+    #if [[ $DISTCHECK_TYPE == -linux-* && $SVN_DIR == openturns/tags/* ]]; then
+    #  OT_TAG_NAME=$(basename $SVN_DIR)
+    #fi
+
+    # make module available on web server
+    if [[ $DISTCHECK_TYPE == -module-* && ${TYPE} = "tag" ]]; then
+      # put /.. after $LOG_DIR in order to remove $DISTCHECK_ID directory
+      local MODULE_TAG_DIR=$WWW_AUTOBUILDER_DIR/$LOG_DIR/..
+
+      # make tgz
+      MODULE_TAG_NAME=`echo ${REV}|sed "s|v||g"`
+      if [[ ! -f $MODULE_TAG_DIR/$MODULE_TAG_NAME.tgz ]]; then
+        if [[ "$MODULE_TAG_NAME" != "" ]]; then
+          mkdir /tmp/ot_module
+          cd /tmp/ot_module
+          git clone https://github.com/${OWNER}/${REPO}.git $MODULE_TAG_NAME
+          tar zcf $MODULE_TAG_DIR/$MODULE_TAG_NAME.tgz $MODULE_TAG_NAME 
+          cd -
+          rm -rf /tmp/ot_module
+        fi
+      fi
+
+      # put pdf
+      if [[ $DISTCHECK_TYPE == -module-linux ]]; then
+        mv $CHROOT_OUT_DIR/*.pdf $MODULE_TAG_DIR/
+      fi
+
+      # put exe
+      if [[ $DISTCHECK_TYPE == -module-mingw ]]; then
+        mv $CHROOT_OUT_DIR/*.exe $WWW_AUTOBUILDER_DIR/$LOG_DIR
+      fi
+
+    fi
+
+  fi # distcheck ok
+
+
+  ###
+  # add mail content
+  DISTCHECK_DONE=$((DISTCHECK_DONE + 1))
+  local RESULT_MSG="  OK  "
+  if [[ $DISTCHECK_OK -ne 1 ]]; then
+    RESULT_MSG="FAILED"
+    DISTCHECK_FAILED=$((DISTCHECK_FAILED + 1))
+  fi
+  local MSG="$DISTCHECK_DONE - distcheck ${RESULT_MSG} for ${OWNER}/${REPO} $DISTRIB $ARCH $DISTCHECK_TYPE\n"
+
+  SUMMARY_MSG+="$MSG"
+
+  BODY_MSG+="$MSG"
+  BODY_MSG+="$COPY_MSG"
+  BODY_MSG+="Full logs can be seen there $WWW_AUTOBUILDER_URL/$LOG_DIR/ , last 20 lines:\n"
+  BODY_MSG+=`tail -20 $WWW_AUTOBUILDER_DIR/$LOG_DIR/$LOG_FILE`
+  BODY_MSG+="\n\n\n"
+}
+
+
+
+function distcheck_prepost_modules {
+  # launch module compilation on a specific openturns version
+  local OT_OWNER=$1
+  local OT_REPO=$2
+  local OT_TYPE=$3
+  local OT_REV=$4
+  # construct the list of modules to check
+  local MODULES="ottemplate otads otdistfunc otsubset otsvm"
+  # put templates at the beginning
+  #local MODULES_UNSORTED=$(svn ls $SVN_OPTIONS https://svn.openturns.org/openturns-modules)
+  #for MODULE in $MODULES_UNSORTED; do
+  #  if [[ $MODULE == template* ]]; then
+  #    MODULES="$MODULE $MODULES"
+  #  else
+  #    MODULES="$MODULES $MODULE"
+  #  fi
+  #done
+
+  # launch them
+  for MODULE in $MODULES; do
+
+    # remove / at the end
+    #MODULE=$(echo $MODULE | sed -e 's/\/$//')
+
+    MODULE_FOUND=0
+    MODULE_REV=`git ls-remote https://github.com/openturns/${MODULE}.git | head -1 | sed 's/HEAD//'`
+    #if [[ $OT_SVN_DIR == openturns/tags/* ]]; then
+      # get the  module tag dir
+    #  TEMPLATE_DIR=$($GET_REV -last-tag-dir "openturns-modules/$MODULE")
+    #  MODULE_FOUND+="$?"
+    #  if [[ $MODULE_FOUND -eq 0 ]]; then
+    #    # get the revision of the tag found
+    #    TEMPLATE_REV=$($GET_REV -last-rev $TEMPLATE_DIR)
+    #    MODULE_FOUND+="$?"
+    #  fi
+    #  OT_TAG_DIR=$OT_SVN_DIR
+    #else
+    #  # get the module trunk dir
+    #  TEMPLATE_DIR="openturns-modules/$MODULE/trunk"
+    #  MODULE_FOUND+="$?"
+    #  if [[ $MODULE_FOUND -eq 0 ]]; then
+    #    TEMPLATE_REV=$($GET_REV -ok-rev $TEMPLATE_DIR)
+    #    MODULE_FOUND+="$?"
+    #  fi
+    #  OT_TAG_DIR=
+    #fi
+
+    TEMPLATE_DIR=$OT_OWNER
+    TEMPLATE_REPO=$MODULEi
+    MODULE_TYPE=commit
+    if [[ $MODULE_FOUND -eq 0 ]]; then
+      # module dir found
+      NB_OK=0
+      distcheck_prepost squeeze x86_64 -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV
+      NB_OK=$(($NB_OK + $DISTCHECK_OK))
+      distcheck_prepost squeeze i386   -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV 
+      NB_OK=$(($NB_OK + $DISTCHECK_OK))
+      distcheck_prepost sid x86_64 -module-mingw openturns $MODULE $MODULE_TYPE $MODULE_REV
+      NB_OK=$(($NB_OK + $DISTCHECK_OK))
+      
+      if "$NB_OK" = "3" -a "${OT_TYPE}" = "tag"
+      then
+        # launch pkg build (osc)
+        $AUTOBUILDER_SCRIPTS_DIR/build-module-pkg.sh https://github.com/${OWNER}/${REPO}.git
+      fi
+
+      SUMMARY_MSG+="\n"
+    else
+      # module dir not found
+      DISTCHECK_DONE=$((DISTCHECK_DONE + 1))
+      DISTCHECK_FAILED=$((DISTCHECK_FAILED + 1))
+      local MSG="$DISTCHECK_DONE - distcheck FAILED for $MODULE "
+      if test "$OT_SVN_DIR" = "openturns/tags/*" ]]; then
+        MSG+="(no tag found)\n\n"
+      else
+        MSG+="(no 'distcheck ok' commit found in the trunk)\n\n"
+      fi
+
+      SUMMARY_MSG+="${MSG}"
+      BODY_MSG+="$MSG\n"
+    fi
+
+  done
+
+}
+
+
+
+# watch forever for new distcheck to do
+echo -n 'Wait distcheck'
+while [ 1 ]; do
+  CHECK_LIST=`ls $CHECK_LIST_DIR`
+  echo -n '.'
+
+  for CHECK in $CHECK_LIST; do
+    if [ ! -f $CHECK_LIST_DIR/$CHECK ]; then
+      continue
+    fi
+    echo 
+    echo
+    echo "Checks to do $CHECK_LIST"
+    # get repos and version to check
+    # file must be named: owner%repo%type%rev 
+    # ex: 
+    #   openturns%openturns%tag%v1.7 
+    #   openturns%otsvm%commit%2c21a212f212154454545c12c12c1c21c2c1c2c
+    #   openturns%doc%pull%1
+    # therefore, no "%" are allowed in repository name
+    OWNER=`echo $CHECK| cut -d '%' -f 1`
+    REPO=`echo $CHECK| cut -d '%' -f 2`
+    TYPE=`echo $CHECK| cut -d '%' -f 3`
+    REV=`echo $CHECK| cut -d '%' -f 4`
+
+    echo "Start distcheck ${OWNER}/${REPO}/${TYPE}/${REV}"
+
+    # reinit
+    DISTCHECK_FAILED=0
+    DISTCHECK_DONE=0
+    SUMMARY_MSG=
+    BODY_MSG=
+
+    if test "${TYPE}" = "tag"
+    then
+      SUMMARY_MSG+="Modules status can be seen here: $WWW_AUTOBUILDER_URL/status.\n\n"
+    fi
+
+    # ot 
+    if test "${REPO}" = "openturns"
+    then
+      distcheck_prepost squeeze x86_64 -ot-linux $OWNER $REPO $TYPE $REV
+      distcheck_prepost squeeze i386   -ot-linux $OWNER $REPO $TYPE $REV
+      distcheck_prepost sid x86_64 -ot-mingw $OWNER $REPO $TYPE $REV
+      if test "${TYPE}" = "tag"
+      then
+        # doxygen
+        distcheck_prepost squeeze x86_64 -doxygen $OWNER $REPO $TYPE $REV
+      fi
+      SUMMARY_MSG+="\n"
+
+      distcheck_prepost_modules $OWNER $REPO $REV
+
+      distcheck_prepost sid x86_64 -ot-vc $OWNER $REPO $TYPE $REV
+      #distcheck_prepost sid2 x86_64 -ot-vc $OWNER $REPO $TYPE $REV
+    
+    elif test "${REPO}" = "doc"
+    then
+      # doc
+      distcheck_prepost squeeze x86_64 -doc $OWNER $REPO $TYPE $REV 
+
+    else
+      # modules
+
+      # get corresponding OT tag
+      #TAG_DIR=$($GET_REV -last-tag-dir openturns)
+      #if [[ "$?" != "0" ]]; then
+      #  TAG_DIR=unknown_error
+      #  TAG_REV=unknown_error
+      #else
+      #  TAG_REV=$($GET_REV -last-rev $TAG_DIR)
+      #  if [[ "$?" != "0" ]]; then
+      #    TAG_REV=unknown_error
+      #  fi
+      #fi
+
+      NB_OK=0
+      distcheck_prepost squeeze x86_64 -module-linux $OWNER $REPO $TYPE $REV
+      NB_OK=$(($NB_OK + $DISTCHECK_OK))
+      distcheck_prepost squeeze i386   -module-linux $OWNER $REPO $TYPE $REV
+      NB_OK=$(($NB_OK + $DISTCHECK_OK))
+      distcheck_prepost sid x86_64 -module-mingw $OWNER $REPO $TYPE $REV
+      NB_OK=$(($NB_OK + $DISTCHECK_OK))
+      
+      if test "$NB_OK" = "3" -a "${TYPE}" = "tag"
+      then
+        # launch pkg build (osc)
+        #$AUTOBUILDER_SCRIPTS_DIR/build-module-pkg.sh $SVN_SERVER/$SVN_DIR
+        echo build-module-pkg.sh
+        # LOG_DIR must have been set by distcheck_prepost
+        #MODULE_LOG_DIR=$LOG_DIR/..
+        # launch pkg build (osc)
+        #OSC_URL=$($AUTOBUILDER_SCRIPTS_DIR/build-module-pkg.sh $SVN_SERVER/$SVN_DIR)
+        #if [ "$?" == "0" ]; then
+        #  touch $MODULE_LOG_DIR/build-pkg-started
+        #  # launch ok, start result checker asynchronously
+        #  $AUTOBUILDER_SCRIPTS_DIR/module-pkg-watcher.sh $MODULE_LOG_DIR $OSC_URL &
+        #else
+        #  # launch fail
+        #  touch $MODULE_LOG_DIR/build-pkg-failed
+        #fi
+      fi
+
+      SUMMARY_MSG+="\n"
+
+    fi
+
+
+    # send mail
+    if test "${#REV}" = "40"
+    then
+      REV=`echo ${REV} | cut -c-7`
+    fi
+
+    NICE_OBJ="${OWNER}/${REPO}/${TYPE}/${REV}"
+    SUBJECT="${NICE_OBJ}"
+    if [ $DISTCHECK_FAILED -eq 0 ]; then
+      SUBJECT+=" - distchecks OK."
+    else
+      SUBJECT+=" - $DISTCHECK_FAILED/$DISTCHECK_DONE distchecks FAILED."
+    fi
+    echo "Send $SUBJECT to $WATCHERS"
+    BODY="https://github.com/${NICE_OBJ}\n\nSummary\n-------\n\n${SUMMARY_MSG}\nDetails\n-------\n\n${BODY_MSG}"
+    echo -e "${BODY}" | mail -aFrom:autobuilder@openturns.org -s "$SUBJECT" $WATCHERS
+    # debug
+    #echo -e "$SUBJECT\n\n" >> /tmp/autobuilder_mails
+    #echo -e "${BODY}\n\n\n\n" >> /tmp/autobuilder_mails
+
+
+    # remove distcheck file
+    rm $CHECK_LIST_DIR/$CHECK
+
+    # launch the creation of the web pages
+    $CREATE_MODULES_PAGES
+
+    sleep 1s
+  done
+
+  sleep 1m
+  # debug
+  #sleep 3
+done
+
+
+
