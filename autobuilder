@@ -192,7 +192,7 @@ function distcheck_prepost
   #  LOG_DIR=openturns/$REV/modules/$DISTCHECK_ID
   #  #LOG_DIR=openturns/should_not_exists
   #fi
-  LOG_DIR=${REPO}/${TYPE}/${REV}
+  LOG_DIR=${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}
   mkdir -p $WWW_AUTOBUILDER_DIR/$LOG_DIR
   mv $CHROOT_OUT_DIR/*.log $WWW_AUTOBUILDER_DIR/$LOG_DIR/
 
