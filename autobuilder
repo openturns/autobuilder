@@ -107,9 +107,9 @@ function distcheck_prepost
   local REV=$7
 
   # sha. only useful when DISTCHECK_TYPE = -module-...
-  local OT_REV=$8
+  local OT_TYPE=$8
   # OT tag path, only useful when DISTCHECK_TYPE = -module-...
-  local OT_TAG=$9
+  local OT_REV=$9
 
   # will be set to 1 if this distcheck appears to be ok
   DISTCHECK_OK=0
@@ -129,7 +129,7 @@ function distcheck_prepost
   # keep distcheck script up to date inside chroot
   cp $AUTOBUILDER_SCRIPTS_DIR/$DISTCHECK_LAUNCHER $CHROOT_DIR/opt/
 
-  if test "${TYPE}" = "tag"
+  if test "${OT_TYPE}" = "tag"
   then
     OT_PREFIX=/$CHROOT_DISTCHECK_DIR/tag/$(echo $DISTCHECK_ID | sed -e 's/-module/-ot/')
   else
@@ -192,7 +192,14 @@ function distcheck_prepost
   #  LOG_DIR=openturns/$REV/modules/$DISTCHECK_ID
   #  #LOG_DIR=openturns/should_not_exists
   #fi
-  LOG_DIR=${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}
+  if test "${DISTCHECK_TYPE}" == "-doc"
+  then
+    LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/"
+  elif [[ "${DISTCHECK_TYPE}" == -module-* ]]
+  then
+    LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/"
+  fi
+  LOG_DIR="${LOG_DIR}${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}"
   mkdir -p $WWW_AUTOBUILDER_DIR/$LOG_DIR
   mv $CHROOT_OUT_DIR/*.log $WWW_AUTOBUILDER_DIR/$LOG_DIR/
 
@@ -328,7 +335,7 @@ function distcheck_prepost_modules {
   local OT_TYPE=$3
   local OT_REV=$4
   # construct the list of modules to check
-  local MODULES="ottemplate otads otdistfunc otsubset otsvm"
+  local MODULES="ottemplate otads otdistfunc otlhs otpmml otsubset otsvm"
   # put templates at the beginning
   #local MODULES_UNSORTED=$(svn ls $SVN_OPTIONS https://svn.openturns.org/openturns-modules)
   #for MODULE in $MODULES_UNSORTED; do
@@ -346,6 +353,7 @@ function distcheck_prepost_modules {
     #MODULE=$(echo $MODULE | sed -e 's/\/$//')
 
     MODULE_FOUND=0
+    MODULE_TYPE=commit
     MODULE_REV=`git ls-remote https://github.com/openturns/${MODULE}.git | head -1 | sed 's/HEAD//'`
     #if [[ $OT_SVN_DIR == openturns/tags/* ]]; then
       # get the  module tag dir
@@ -369,16 +377,16 @@ function distcheck_prepost_modules {
     #fi
 
     TEMPLATE_DIR=$OT_OWNER
-    TEMPLATE_REPO=$MODULEi
-    MODULE_TYPE=commit
+    TEMPLATE_REPO=$MODULE
+    
     if [[ $MODULE_FOUND -eq 0 ]]; then
       # module dir found
       NB_OK=0
-      distcheck_prepost squeeze x86_64 -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV
+      distcheck_prepost squeeze x86_64 -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV $OT_REV
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
-      distcheck_prepost squeeze i386   -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV 
+      distcheck_prepost squeeze i386   -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV $OT_REV 
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
-      distcheck_prepost sid x86_64 -module-mingw openturns $MODULE $MODULE_TYPE $MODULE_REV
+      distcheck_prepost sid x86_64 -module-mingw openturns $MODULE $MODULE_TYPE $MODULE_REV $OT_REV
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
       
       if "$NB_OK" = "3" -a "${OT_TYPE}" = "tag"
@@ -447,6 +455,10 @@ while [ 1 ]; do
       SUMMARY_MSG+="Modules status can be seen here: $WWW_AUTOBUILDER_URL/status.\n\n"
     fi
 
+    OT_TYPE=tag
+    OT_REV=`git ls-remote --tags https://github.com/openturns/openturns.git |grep -v {|tail -n1`
+    OT_REV=`echo ${OT_REV}|cut -d "/" -f 3`
+
     # ot 
     if test "${REPO}" = "openturns"
     then
@@ -460,7 +472,7 @@ while [ 1 ]; do
       fi
       SUMMARY_MSG+="\n"
 
-      distcheck_prepost_modules $OWNER $REPO $REV
+      distcheck_prepost_modules $OWNER $REPO $TYPE $REV
 
       distcheck_prepost sid x86_64 -ot-vc $OWNER $REPO $TYPE $REV
       #distcheck_prepost sid2 x86_64 -ot-vc $OWNER $REPO $TYPE $REV
@@ -468,29 +480,16 @@ while [ 1 ]; do
     elif test "${REPO}" = "doc"
     then
       # doc
-      distcheck_prepost squeeze x86_64 -doc $OWNER $REPO $TYPE $REV 
+      distcheck_prepost squeeze x86_64 -doc ${OWNER} ${REPO} ${TYPE} ${REV} ${OT_TYPE} ${OT_REV}
 
     else
       # modules
-
-      # get corresponding OT tag
-      #TAG_DIR=$($GET_REV -last-tag-dir openturns)
-      #if [[ "$?" != "0" ]]; then
-      #  TAG_DIR=unknown_error
-      #  TAG_REV=unknown_error
-      #else
-      #  TAG_REV=$($GET_REV -last-rev $TAG_DIR)
-      #  if [[ "$?" != "0" ]]; then
-      #    TAG_REV=unknown_error
-      #  fi
-      #fi
-
       NB_OK=0
-      distcheck_prepost squeeze x86_64 -module-linux $OWNER $REPO $TYPE $REV
+      distcheck_prepost squeeze x86_64 -module-linux $OWNER $REPO $TYPE $REV $OT_TYPE $OT_REV
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
-      distcheck_prepost squeeze i386   -module-linux $OWNER $REPO $TYPE $REV
+      distcheck_prepost squeeze i386   -module-linux $OWNER $REPO $TYPE $REV $OT_TYPE $OT_REV
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
-      distcheck_prepost sid x86_64 -module-mingw $OWNER $REPO $TYPE $REV
+      distcheck_prepost sid x86_64 -module-mingw $OWNER $REPO $TYPE $REV $OT_TYPE $OT_REV
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
       
       if test "$NB_OK" = "3" -a "${TYPE}" = "tag"
