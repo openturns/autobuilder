@@ -194,12 +194,13 @@ function distcheck_prepost
   #fi
   if test "${DISTCHECK_TYPE}" == "-doc"
   then
-    LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/"
+    LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}"
   elif [[ "${DISTCHECK_TYPE}" == -module-* ]]
   then
-    LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/"
+    LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}/module"
+  else 
+    LOG_DIR="${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}"
   fi
-  LOG_DIR="${LOG_DIR}${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}"
   mkdir -p $WWW_AUTOBUILDER_DIR/$LOG_DIR
   mv $CHROOT_OUT_DIR/*.log $WWW_AUTOBUILDER_DIR/$LOG_DIR/
 
@@ -382,18 +383,18 @@ function distcheck_prepost_modules {
     if [[ $MODULE_FOUND -eq 0 ]]; then
       # module dir found
       NB_OK=0
-      distcheck_prepost squeeze x86_64 -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV $OT_REV
+      distcheck_prepost squeeze x86_64 -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV ${OT_TYPE} ${OT_REV}
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
-      distcheck_prepost squeeze i386   -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV $OT_REV 
+      distcheck_prepost squeeze i386   -module-linux openturns $MODULE $MODULE_TYPE $MODULE_REV ${OT_TYPE} ${OT_REV} 
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
-      distcheck_prepost sid x86_64 -module-mingw openturns $MODULE $MODULE_TYPE $MODULE_REV $OT_REV
+      distcheck_prepost sid x86_64 -module-mingw openturns $MODULE $MODULE_TYPE $MODULE_REV ${OT_TYPE} ${OT_REV}
       NB_OK=$(($NB_OK + $DISTCHECK_OK))
       
-      if "$NB_OK" = "3" -a "${OT_TYPE}" = "tag"
-      then
-        # launch pkg build (osc)
-        $AUTOBUILDER_SCRIPTS_DIR/build-module-pkg.sh https://github.com/${OWNER}/${REPO}.git
-      fi
+      #if "$NB_OK" = "3" -a "${OT_TYPE}" = "tag"
+      #then
+      #  # launch pkg build (osc)
+      #  $AUTOBUILDER_SCRIPTS_DIR/build-module-pkg.sh https://github.com/${OWNER}/${REPO}.git
+      #fi
 
       SUMMARY_MSG+="\n"
     else

@@ -178,7 +178,20 @@ function update_nb_jobs {
 }
 
 function git_checkout {
-  git clone ${GIT_OPTIONS} ${GIT_REPO} ${WORKDIR}
+  n=0
+  while :
+  do
+    git clone ${GIT_OPTIONS} ${GIT_REPO} ${WORKDIR}
+    if test "$?" = "0" -o "$n" = "5"
+    then
+      break
+    else
+      n=`expr $n + 1`
+      echo "retry $n"
+      sleep 3
+    fi
+  done
+
   cd ${WORKDIR}
   if test "${TYPE}" = "commit"
   then
