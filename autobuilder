@@ -197,7 +197,7 @@ function distcheck_prepost
     LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}"
   elif [[ "${DISTCHECK_TYPE}" == -module-* ]]
   then
-    LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}/module"
+    LOG_DIR="openturns/${OT_TYPE}/${OT_REV}/module/${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}"
   else 
     LOG_DIR="${REPO}/${TYPE}/${REV}/${DISTCHECK_ID}"
   fi
