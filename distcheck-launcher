@@ -202,7 +202,7 @@ function git_checkout {
     git checkout -qf FETCH_HEAD
   elif test "${TYPE}" = "tag"
   then
-    git checkout tag/${REV}
+    git checkout tags/${REV}
   else
     echo "invalid TYPE: ${TYPE}"
   fi
@@ -318,7 +318,7 @@ function check_ot_linux {
 
   if test -x ~/.local/bin/pep257
   then
-   ~/.local/bin/pep257 -s --ignore=D100,D101,D102,D103,D203,D204,D301 $INSTALL_DIR/lib/python3.1/site-packages/openturns/ || echo "-- pep257 found some warnings"
+    ~/.local/bin/pep257 -s --ignore=D100,D101,D102,D103,D203,D204,D301 $INSTALL_DIR/lib/python3.1/site-packages/openturns/ || echo "-- pep257 found some warnings"
   fi
 
   #check_module_linux
