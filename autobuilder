@@ -211,7 +211,7 @@ function distcheck_prepost
   if [[ $DISTCHECK_OK -eq 1 ]]; then
 
     # make doxygen available on web server
-    if test "$DISTCHECK_TYPE" == "-doxygen" -a "${TYPER}" = "tag"
+    if test "$DISTCHECK_TYPE" == "-doxygen" -a "${TYPE}" = "tag"
     then
       VERSION=`echo ${REV}|sed "s|v||g"`
       WWW_DOC_DOX=$WWW_DOC/$VERSION
