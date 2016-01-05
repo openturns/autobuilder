@@ -50,9 +50,10 @@ class hooks:
             pull = payload.get('pull_request')
             if pull is not None and pull.get('state') == 'open':
                 pull_number = pull.get('number')
-                if pull_number is not None:
+                pull_title = pull.get('title')
+                if (pull_number is not None) and (pull_title is not None):
                     probe = probe_base + '%pull%' + str(pull_number)
-                    sendmail(repo+'/pull/'+str(pull_number), 'https://github.com/'+repo+'/pull/'+str(pull_number))
+                    sendmail(repo+'/pull/'+str(pull_number)+' ('+pull_title+')', 'https://github.com/'+repo+'/pull/'+str(pull_number)+' ('+pull_title+')')
 
             ref = payload.get('ref')
             if ref is not None:
