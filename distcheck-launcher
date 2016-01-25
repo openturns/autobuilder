@@ -27,13 +27,13 @@ function trap_error {
 
 
 function usage {
-  echo "usage: $0 OWNER REPO REV OUT_DIR [-ot-linux|-ot-mingw|-ot-vc|-doxygen|-doc|-module-linux OT_PREFIX|-module-mingw OT_PREFIX] [-log logfile] [-keep INSTALL_DIR]"
-  echo "usage: e.g.: $0 openturns/trunk 1538 out_dir -ot-linux"
+  echo "usage: $0 OWNER REPO REV TYPE OUT_DIR [-ot-linux|-ot-mingw|-ot-vc|-doxygen|-doc|-module-linux OT_PREFIX|-module-mingw OT_PREFIX] [-log logfile] [-keep INSTALL_DIR]"
+  echo "usage: e.g.: $0 openturns openturns 10 pull out_dir -ot-linux"
   echo "usage: $0 -h"
   exit 1
 }
 
-if [ $# -lt 3 ]; then
+if [ $# -lt 5 ]; then
   usage
 fi
 
