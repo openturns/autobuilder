@@ -272,22 +272,6 @@ function check_module_mingw {
 }
 
 
-
-function check_wrapper_template {
-  # check wrapper template calling shell command
-  # must be launched at the end of check_ot_linux
-  TEMPLATE_WORKDIR=$WORKDIR/wrappers/WrapperTemplates/wrapper_calling_shell_command
-  cd $TEMPLATE_WORKDIR
-  ./customize Pouet
-  mkdir -p build && cd build
-  cmake .. -DCMAKE_INSTALL_PREFIX=$PWD/install -DCMAKE_MODULE_PATH=$WORKDIR/build/install/lib/openturns -DOpenTURNS_DIR=$INSTALL_DIR/lib/openturns
-  make install $JOBSFLAGS
-  cd $TEMPLATE_WORKDIR
-  LD_LIBRARY_PATH=$WORKDIR/build/install/lib/openturns PATH=$TEMPLATE_WORKDIR/build/install/bin:$PATH OPENTURNS_WRAPPER_PATH=$TEMPLATE_WORKDIR/build/install/wrappers PYTHONPATH=$WORKDIR/build/install/lib/python2.6/site-packages python test.py
-}
-
-
-
 function check_ot_linux {
   git_checkout
 
@@ -323,7 +307,6 @@ function check_ot_linux {
 
   #check_module_linux
   # debug
-  #check_wrapper_template
 }
 
 
