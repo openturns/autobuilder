@@ -259,9 +259,13 @@ function check_module_mingw {
     # todo: INSTALL_PREFIX
     make mod-test OT_PREFIX=${OT_PREFIX}-i686 WINDEPS=$WINDEPS CHECK_OT=y || { cp $WORKDIR/build-i686-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; } 
     make mod-installer OT_PREFIX=${OT_PREFIX}-i686 WINDEPS=$WINDEPS CHECK_OT=y && cp *.exe $OUT_DIR
-    #rm mod-*
-    #make mod-test OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 || { cp $WORKDIR/build-x86_64-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
-    #make mod-installer OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 && cp *.exe $OUT_DIR
+    
+    if test "${TYPE}" = "tag"
+    then
+      rm mod-*
+      make mod-test OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 || { cp $WORKDIR/build-x86_64-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+      make mod-installer OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 && cp *.exe $OUT_DIR
+    fi
   else
 
     echo "No installer script found (CMakeLists.txt)! Exiting."
@@ -320,9 +324,13 @@ function check_ot_mingw {
   make ot-test OT_PREFIX=${INSTALL_DIR}-i686 WINDEPS=$WINDEPS JOBS=$NB_JOBS || \
     { cp ${WORKDIR}/build-i686-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
 
-  #rm ot-*
-  #make ot-test OT_PREFIX=${INSTALL_DIR}-x86_64 WINDEPS=$WINDEPS JOBS=$NB_JOBS ARCH=x86_64 || \
-  #  { cp $WORKDIR//build-x86_64-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+  # do 64bits for tags
+  if test "${TYPE}" = "tag"
+  then
+    rm ot-*
+    make ot-test OT_PREFIX=${INSTALL_DIR}-x86_64 WINDEPS=$WINDEPS JOBS=$NB_JOBS ARCH=x86_64 || \
+     { cp $WORKDIR//build-x86_64-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+  fi
 }
 
 

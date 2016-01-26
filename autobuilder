@@ -337,15 +337,6 @@ function distcheck_prepost_modules {
   local OT_REV=$4
   # construct the list of modules to check
   local MODULES="ottemplate otads otdistfunc otlhs otpmml otsubset otsvm"
-  # put templates at the beginning
-  #local MODULES_UNSORTED=$(svn ls $SVN_OPTIONS https://svn.openturns.org/openturns-modules)
-  #for MODULE in $MODULES_UNSORTED; do
-  #  if [[ $MODULE == template* ]]; then
-  #    MODULES="$MODULE $MODULES"
-  #  else
-  #    MODULES="$MODULES $MODULE"
-  #  fi
-  #done
 
   # launch them
   for MODULE in $MODULES; do
@@ -356,26 +347,16 @@ function distcheck_prepost_modules {
     MODULE_FOUND=0
     MODULE_TYPE=commit
     MODULE_REV=`git ls-remote https://github.com/openturns/${MODULE}.git | head -1 | sed 's/HEAD//'`
-    #if [[ $OT_SVN_DIR == openturns/tags/* ]]; then
-      # get the  module tag dir
-    #  TEMPLATE_DIR=$($GET_REV -last-tag-dir "openturns-modules/$MODULE")
-    #  MODULE_FOUND+="$?"
-    #  if [[ $MODULE_FOUND -eq 0 ]]; then
-    #    # get the revision of the tag found
-    #    TEMPLATE_REV=$($GET_REV -last-rev $TEMPLATE_DIR)
-    #    MODULE_FOUND+="$?"
-    #  fi
-    #  OT_TAG_DIR=$OT_SVN_DIR
-    #else
-    #  # get the module trunk dir
-    #  TEMPLATE_DIR="openturns-modules/$MODULE/trunk"
-    #  MODULE_FOUND+="$?"
-    #  if [[ $MODULE_FOUND -eq 0 ]]; then
-    #    TEMPLATE_REV=$($GET_REV -ok-rev $TEMPLATE_DIR)
-    #    MODULE_FOUND+="$?"
-    #  fi
-    #  OT_TAG_DIR=
-    #fi
+
+    if test "${OT_TYPE}" = "tag"
+    then
+      TAGS_LIST=`git ls-remote -t https://github.com/openturns/${MODULE}.git | awk '{print $2}' | cut -d '/' -f 3 | cut -d '^' -f 1 | uniq`
+      if test -n "$TAGS_LIST"
+      then
+        MODULE_TYPE=tag
+        MODULE_REV=`echo $TAGS_LIST | awk '{print $NF}'`
+      fi
+    fi
 
     TEMPLATE_DIR=$OT_OWNER
     TEMPLATE_REPO=$MODULE
@@ -463,9 +444,9 @@ while [ 1 ]; do
     # ot 
     if test "${REPO}" = "openturns"
     then
-      distcheck_prepost squeeze x86_64 -ot-linux $OWNER $REPO $TYPE $REV
-      distcheck_prepost squeeze i386   -ot-linux $OWNER $REPO $TYPE $REV
-      distcheck_prepost sid x86_64 -ot-mingw $OWNER $REPO $TYPE $REV
+      distcheck_prepost squeeze x86_64 -ot-linux $OWNER $REPO $TYPE $REV $TYPE $REV
+      distcheck_prepost squeeze i386   -ot-linux $OWNER $REPO $TYPE $REV $TYPE $REV
+      distcheck_prepost sid x86_64 -ot-mingw $OWNER $REPO $TYPE $REV $TYPE $REV
       if test "${TYPE}" = "tag"
       then
         # doxygen
@@ -475,8 +456,8 @@ while [ 1 ]; do
 
       distcheck_prepost_modules $OWNER $REPO $TYPE $REV
 
-      distcheck_prepost sid x86_64 -ot-vc $OWNER $REPO $TYPE $REV
-      #distcheck_prepost sid2 x86_64 -ot-vc $OWNER $REPO $TYPE $REV
+      distcheck_prepost sid x86_64 -ot-vc $OWNER $REPO $TYPE $REV $TYPE $REV
+      #distcheck_prepost sid2 x86_64 -ot-vc $OWNER $REPO $TYPE $REV $TYPE $REV
     
     elif test "${REPO}" = "doc"
     then
