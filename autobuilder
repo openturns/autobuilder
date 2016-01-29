@@ -214,7 +214,7 @@ function distcheck_prepost
     if test "$DISTCHECK_TYPE" == "-doxygen" -a "${TYPE}" = "tag"
     then
       VERSION=`echo ${REV}|sed "s|v||g"`
-      WWW_DOC_DOX=$WWW_DOC/$VERSION
+      WWW_DOC_DOX=$WWW_DOC/openturns-$VERSION
 
       # copy in new directory
       mkdir -p $WWW_DOC_DOX
