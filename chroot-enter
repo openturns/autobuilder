@@ -52,6 +52,7 @@ if [ "$STEP" == "chroot" ]; then
     #sudo mount -t proc proc $CHROOTDIR/proc
     sudo mount --bind /proc $CHROOTDIR/proc
     sudo mount --bind /dev $CHROOTDIR/dev
+    sudo chmod a+w $CHROOTDIR/dev/shm
     sudo mount devpts -t devpts $CHROOTDIR/dev/pts
     #sudo mount -t sysfs sys $CHROOTDIR/sys
     sudo mount --bind /sys $CHROOTDIR/sys
