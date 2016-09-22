@@ -69,7 +69,7 @@ INSTALL_DIR="${WORKDIR}/build/install"
 OT_PREFIX=
 
 
-WINDEPS=$HOME/opt/openturns-developers-windeps-1.4
+WINDEPS=$HOME/opt/openturns-developers-windeps
 VCBOTTLE=$HOME/opt/bottle-vc10
 
 # choose check
@@ -218,6 +218,7 @@ function check_module_linux {
 
   if test -f CMakeLists.txt
   then
+
     mkdir build && cd build
     cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DOpenTURNS_DIR=$OT_PREFIX/lib/cmake/openturns ..
 
@@ -259,10 +260,14 @@ function check_module_mingw {
     # todo: INSTALL_PREFIX
     make mod-test OT_PREFIX=${OT_PREFIX}-i686 WINDEPS=$WINDEPS CHECK_OT=y || { cp $WORKDIR/build-i686-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; } 
     make mod-installer OT_PREFIX=${OT_PREFIX}-i686 WINDEPS=$WINDEPS CHECK_OT=y && cp *.exe $OUT_DIR
-    
-    rm mod-*
-    make mod-test OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 || { cp $WORKDIR/build-x86_64-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
-    make mod-installer OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 && cp *.exe $OUT_DIR
+  
+    # x86_64 only for tags
+    if test -d "${OT_PREFIX}-x86_64/lib/cmake/openturns"
+    then
+      rm mod-*
+      make mod-test OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 || { cp $WORKDIR/build-x86_64-w64-mingw32/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+      make mod-installer OT_PREFIX=${OT_PREFIX}-x86_64 WINDEPS=$WINDEPS CHECK_OT=y ARCH=x86_64 && cp *.exe $OUT_DIR
+    fi
   else
 
     echo "No installer script found (CMakeLists.txt)! Exiting."
@@ -286,6 +291,7 @@ function check_ot_linux {
 
   update_nb_jobs
   make install $JOBSFLAGS
+
   PYTHONPATH=$INSTALL_DIR/lib/python2.6/site-packages python -c "from openturns import *; u=Normal(); print (u)"
   update_nb_jobs
   make tests $JOBSFLAGS
@@ -356,9 +362,10 @@ function check_doc {
   git_checkout
   update_nb_jobs
   mkdir build && cd build
-  cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DOpenTURNS_DIR=/home/openturns/distcheck/tag/squeeze-x86_64-ot-linux/lib/cmake/openturns ..
+  cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR ..
+  #-DOpenTURNS_DIR=/home/openturns/distcheck/tag/squeeze-x86_64-ot-linux/lib/cmake/openturns ..
   make install $JOBSFLAGS && { mv install/share/doc/openturns-doc/* $OUT_DIR; }
-  ctest $JOBSFLAGS || { cp ${WORKDIR}/build/Testing/Temporary/LastTest.log $OUT_DIR; false; }
+  #ctest $JOBSFLAGS || { cp ${WORKDIR}/build/Testing/Temporary/LastTest.log $OUT_DIR; false; }
 }
 
 
