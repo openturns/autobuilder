@@ -63,7 +63,7 @@ class hooks:
                     sendmail(repo+'/tag/'+ref, 'https://github.com/'+repo+'/releases/tag/'+ref)
 
             print('probe:', probe)
-            if probe is not None:
+            if probe is not None and not 'openturns%openturns%commit' in probe:
                 open(probe,'w').close()
         except Exception, err:
             print(traceback.format_exc())
