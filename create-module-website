@@ -6,7 +6,7 @@ import string
 import re
 import shutil
 
-remote_ = False 
+remote_ = False
 if remote_:
     import requests
     from bs4 import BeautifulSoup
@@ -287,7 +287,7 @@ def create_modules_page(modules):
 
                 html += '  </td>\n'
 
-                # pdf 
+                # html / pdf
                 hrefs = ''
                 for pdf in module_rev_dic['x86_64']['pdf']:
                     pdf_url = pdf.replace(www_autobuilder_dir, www_autobuilder_url)
@@ -295,7 +295,14 @@ def create_modules_page(modules):
                     #hrefs = '<a href="' + pdf_url + '">' + pdf_name + '</a>'
                     hrefs = '<a href="' + pdf_url + '">pdf</a>'
                 if hrefs == '':
-                    hrefs = '-'
+                    module_name = re.sub('-.*', '', module_rev_dic['svn_tag_dir'])
+                    url = 'http://openturns.github.io/'+module_name+'/master/'
+                    response = requests.get(url)
+                    print(module_name, response.status_code)
+                    if response.status_code == 200:#ok
+                        hrefs = '<a href="' + url + '">html</a>'
+                    else:
+                        hrefs = '-'
                 html += '  <td class="buildstatus nowrap">' + hrefs + '</td>\n'
 
                 # exe 
@@ -407,7 +414,6 @@ def create_modules_list_page(modules):
     handle = open(os.path.join(module_pages_dir, 'index.html'), 'w')
     handle.write(html)
     handle.close()
-    
 
 
 def separate_dir_rev(name):
