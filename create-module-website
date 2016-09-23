@@ -297,9 +297,8 @@ def create_modules_page(modules):
                 if hrefs == '':
                     module_name = re.sub('-.*', '', module_rev_dic['svn_tag_dir'])
                     url = 'http://openturns.github.io/'+module_name+'/master/'
-                    response = requests.get(url)
-                    print(module_name, response.status_code)
-                    if response.status_code == 200:#ok
+                    scode = requests.get(url).status_code if remote_ else 200
+                    if scode == 200:#ok
                         hrefs = '<a href="' + url + '">html</a>'
                     else:
                         hrefs = '-'
