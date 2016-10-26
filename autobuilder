@@ -457,9 +457,6 @@ while [ 1 ]; do
 
       distcheck_prepost_modules $OWNER $REPO $TYPE $REV
 
-      distcheck_prepost sid x86_64 -ot-vc $OWNER $REPO $TYPE $REV $TYPE $REV
-      #distcheck_prepost sid2 x86_64 -ot-vc $OWNER $REPO $TYPE $REV $TYPE $REV
-    
     elif test "${REPO}" = "doc"
     then
       # doc

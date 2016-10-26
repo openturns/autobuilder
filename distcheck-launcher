@@ -27,7 +27,7 @@ function trap_error {
 
 
 function usage {
-  echo "usage: $0 OWNER REPO REV TYPE OUT_DIR [-ot-linux|-ot-mingw|-ot-vc|-doxygen|-doc|-module-linux OT_PREFIX|-module-mingw OT_PREFIX] [-log logfile] [-keep INSTALL_DIR]"
+  echo "usage: $0 OWNER REPO REV TYPE OUT_DIR [-ot-linux|-ot-mingw|-doxygen|-doc|-module-linux OT_PREFIX|-module-mingw OT_PREFIX] [-log logfile] [-keep INSTALL_DIR]"
   echo "usage: e.g.: $0 openturns openturns 10 pull out_dir -ot-linux"
   echo "usage: $0 -h"
   exit 1
@@ -70,12 +70,11 @@ OT_PREFIX=
 
 
 WINDEPS=$HOME/opt/openturns-developers-windeps
-VCBOTTLE=$HOME/opt/bottle-vc10
 
 # choose check
 while [ $# -gt 0 ]; do
   case $1 in
-    -ot-linux|-ot-mingw|-ot-vc|-doxygen|-doc)
+    -ot-linux|-ot-mingw|-doxygen|-doc)
       CHECK=$1
       shift
       ;;
@@ -338,14 +337,6 @@ function check_ot_mingw {
 
 
 
-function check_ot_vc {
-  git_checkout
-  update_nb_jobs
-  cd distro/windows
-  make ot-vc VCBOTTLE=$VCBOTTLE JOBS=2 WINDEPS=$WINDEPS
-}
-
-
 
 function check_doxygen {
   git_checkout
@@ -374,8 +365,6 @@ if [ "$CHECK" == "-ot-linux" ]; then
   check_ot_linux
 elif [ "$CHECK" == "-ot-mingw" ]; then
   check_ot_mingw
-elif [ "$CHECK" == "-ot-vc" ]; then
-  check_ot_vc
 elif [ "$CHECK" == "-module-linux" ]; then
   check_module_linux
 elif [ "$CHECK" == "-module-mingw" ]; then
