@@ -462,6 +462,10 @@ while [ 1 ]; do
       # doc
       distcheck_prepost squeeze x86_64 -doc ${OWNER} ${REPO} ${TYPE} ${REV} ${OT_TYPE} ${OT_REV}
 
+    elif test "${REPO}" = "www"
+    then
+      # website
+      pushd /var/www/www.openturns.org && git pull && popd 
     else
       # modules
       NB_OK=0
