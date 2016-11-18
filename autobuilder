@@ -336,7 +336,7 @@ function distcheck_prepost_modules {
   local OT_TYPE=$3
   local OT_REV=$4
   # construct the list of modules to check
-  local MODULES="ottemplate otfftw otlhs otmixmod otmorris otpmml otrobopt otsvm"
+  local MODULES="ottemplate otfftw otlhs otlm otmixmod otmorris otpmml otrobopt otsvm"
   # otmorris
 
   # launch them
