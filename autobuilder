@@ -448,11 +448,11 @@ while [ 1 ]; do
       distcheck_prepost squeeze x86_64 -ot-linux $OWNER $REPO $TYPE $REV $TYPE $REV
       distcheck_prepost squeeze i386   -ot-linux $OWNER $REPO $TYPE $REV $TYPE $REV
       distcheck_prepost sid x86_64 -ot-mingw $OWNER $REPO $TYPE $REV $TYPE $REV
-      if test "${TYPE}" = "tag"
-      then
+      #if test "${TYPE}" = "tag"
+      #then
         # doxygen
-        distcheck_prepost squeeze x86_64 -doxygen $OWNER $REPO $TYPE $REV
-      fi
+        #distcheck_prepost squeeze x86_64 -doxygen $OWNER $REPO $TYPE $REV
+      #fi
       SUMMARY_MSG+="\n"
 
       distcheck_prepost_modules $OWNER $REPO $TYPE $REV
