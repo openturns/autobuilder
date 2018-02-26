@@ -344,7 +344,7 @@ function check_doxygen {
   mkdir build && cd build
   cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR ..
   make $JOBSFLAGS html && mv ./lib/doc/api $OUT_DIR
-  make install $JOBSFLAGS && mv $INSTALL_DIR/share/openturns/doc/html $OUT_DIR/sphinx
+  #make install $JOBSFLAGS && mv $INSTALL_DIR/share/openturns/doc/html $OUT_DIR/sphinx
 }
 
 
