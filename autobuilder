@@ -219,14 +219,14 @@ function distcheck_prepost
       # copy in new directory
       mkdir -p $WWW_DOC_DOX
       mv $CHROOT_OUT_DIR/api $WWW_DOC_DOX
-      mv $CHROOT_OUT_DIR/sphinx $WWW_DOC_DOX
+      #mv $CHROOT_OUT_DIR/sphinx $WWW_DOC_DOX
 
       # update latests links
       mkdir -p $WWW_DOC/openturns-latest
       rm $WWW_DOC/openturns-latest/api
-      rm $WWW_DOC/openturns-latest/sphinx
+      #rm $WWW_DOC/openturns-latest/sphinx
       ln -s $WWW_DOC_DOX/api $WWW_DOC/openturns-latest/api
-      ln -s $WWW_DOC_DOX/sphinx $WWW_DOC/openturns-latest/sphinx
+      #ln -s $WWW_DOC_DOX/sphinx $WWW_DOC/openturns-latest/sphinx
 
       # create hidden link useful for -doc
       rm $WWW_DOC/.openturns-latest
@@ -295,7 +295,7 @@ function distcheck_prepost
 
       # put pdf
       if [[ $DISTCHECK_TYPE == -module-linux ]]; then
-        mv $CHROOT_OUT_DIR/*.pdf $MODULE_TAG_DIR/
+        mv $CHROOT_OUT_DIR/*.pdf $MODULE_TAG_DIR/ || echo "no pdf"
       fi
 
       # put exe
